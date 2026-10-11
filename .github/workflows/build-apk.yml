@@ -1,1 +1,62 @@
 
+name: Build Smart Tap APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-apk.yml'
+      - 'SmartTap-phone-cloud-build-kit.zip'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get repository files
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Extract build kit
+        run: |
+          unzip -q SmartTap-phone-cloud-build-kit.zip -d kit
+          find kit -name 'SmartTapAndroid-source.zip'
+
+      - name: Prepare Android source
+        run: |
+          SOURCE=$(find kit -name 'SmartTapAndroid-source.zip' -print -quit)
+          test -n "$SOURCE" || {
+            echo "Android source ZIP not found in build kit"
+            exit 1
+          }
+          mkdir source
+          unzip -q "$SOURCE" -d source
+          find source -name settings.gradle -o -name settings.gradle.kts
+
+      - name: Build APK
+        run: |
+          PROJECT=$(find source -name settings.gradle -o -name settings.gradle.kts | head -n 1 | xargs dirname)
+          test -n "$PROJECT" || {
+            echo "Android Gradle project not found"
+            exit 1
+          }
+          cd "$PROJECT"
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug
+          else
+            echo "Gradle wrapper missing; build needs setup"
+            exit 1
+          fi
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartTap-debug-APK
+          path: source/**/build/outputs/apk/debug/*.apk
+          
